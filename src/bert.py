@@ -18,28 +18,26 @@ import numpy as np
 import torch
 from transformers import BertModel, BertTokenizer, AdamW, get_linear_schedule_with_warmup
 import time
+from preprocessing.nlp import preprocess
+from preprocessing.tratamento import filter_data
 
 RANDOM_SEED = 15
 PRE_TRAINED_MODEL_NAME = 'neuralmind/bert-base-portuguese-cased'
-MAX_LEN = 150
+MAX_LEN = 156
 BATCH_SIZE = 16
-EPOCHS = 5
+EPOCHS = 10
 
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-df = pd.read_csv('/home/daniel/PIBIC2/data/tceTextData.csv')
+df = filter_data(
+    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\dadosTCE.csv',
+    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\norel.xlsx'
+)
+df = df[['empenho_historico', 'natureza_despesa_cod']]
 df.columns = ['empenho', 'natureza']
-df = get_topN_labels_doc(df, 'natureza', 400)
-
-n_samples = int(df.values.shape[0] * 0.33)
-df = resample(df, n_samples=n_samples,
-              random_state=RANDOM_SEED, stratify=df.natureza)
-df.empenho = df.empenho.apply(embeddingPrep)
-
-le = LabelEncoder()
+df.empenho = df.empenho.apply(preprocess)
 
 lb = LabelEncoder()
 df['encodedNatureza'] = lb.fit_transform(df.natureza)
@@ -81,12 +79,14 @@ class TCEDataset(Dataset):
 df_train, df_test = train_test_split(
     df,
     test_size=0.3,
-    random_state=RANDOM_SEED
+    random_state=RANDOM_SEED,
+    stratify=df.natureza
 )
 df_val, df_test = train_test_split(
     df_test,
     test_size=0.5,
-    random_state=RANDOM_SEED
+    random_state=RANDOM_SEED,
+    stratify=df_test.natureza
 )
 
 
