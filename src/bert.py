@@ -1,3 +1,4 @@
+# %%
 import string
 import re
 import torch.nn.functional as F
@@ -31,18 +32,7 @@ np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-df = filter_data(
-    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\dadosTCE.csv',
-    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\norel.xlsx'
-)
-df = df[['empenho_historico', 'natureza_despesa_cod']]
-df.columns = ['empenho', 'natureza']
-df.empenho = df.empenho.apply(preprocess)
-
-lb = LabelEncoder()
-df['encodedNatureza'] = lb.fit_transform(df.natureza)
-
-tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
+# %%
 
 
 class TCEDataset(Dataset):
@@ -76,20 +66,6 @@ class TCEDataset(Dataset):
         }
 
 
-df_train, df_test = train_test_split(
-    df,
-    test_size=0.3,
-    random_state=RANDOM_SEED,
-    stratify=df.natureza
-)
-df_val, df_test = train_test_split(
-    df_test,
-    test_size=0.5,
-    random_state=RANDOM_SEED,
-    stratify=df_test.natureza
-)
-
-
 def create_data_loader(df, tokenizer, max_len, batch_size):
     ds = TCEDataset(
         empenho=df.empenho.to_numpy(),
@@ -100,14 +76,7 @@ def create_data_loader(df, tokenizer, max_len, batch_size):
     return DataLoader(
         ds,
         batch_size=batch_size,
-        num_workers=4
     )
-
-
-train_data_loader = create_data_loader(
-    df_train, tokenizer, MAX_LEN, BATCH_SIZE)
-val_data_loader = create_data_loader(df_val, tokenizer, MAX_LEN, BATCH_SIZE)
-test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE)
 
 
 class NaturezaClassifier(nn.Module):
@@ -125,21 +94,6 @@ class NaturezaClassifier(nn.Module):
 
         output = self.drop(bert_output['pooler_output'])
         return self.out(output)
-
-
-model = NaturezaClassifier(len(lb.classes_))
-model = model.to(device)
-
-# model.load_state_dict(torch.load('best_model_state.bin', map_location=torch.device(device)))
-
-optimizer = AdamW(model.parameters(), lr=2e-5, correct_bias=False)
-total_steps = len(train_data_loader) * EPOCHS
-scheduler = get_linear_schedule_with_warmup(
-    optimizer,
-    num_warmup_steps=0,
-    num_training_steps=total_steps
-)
-loss_fn = nn.CrossEntropyLoss().to(device)
 
 
 def train_epoch(model, data_loader, loss_fn, optimizer, device, scheduler, n_examples):
@@ -202,6 +156,54 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
     return correct_predictions.double() / n_examples, np.mean(losses), macro, micro
 
 
+# %%
+df = filter_data(
+    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\dadosTCE.csv',
+    'C:\\Users\\jefma\\OneDrive\\Documentos\\GitHub\\pibic-cht\\data\\norel.xlsx'
+)
+df = df[['empenho_historico', 'natureza_despesa_cod']]
+df.columns = ['empenho', 'natureza']
+df.empenho = df.empenho.apply(preprocess)
+
+lb = LabelEncoder()
+df['encodedNatureza'] = lb.fit_transform(df.natureza)
+
+tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
+
+df_train, df_test = train_test_split(
+    df,
+    test_size=0.3,
+    random_state=RANDOM_SEED,
+    stratify=df.natureza
+)
+df_val, df_test = train_test_split(
+    df_test,
+    test_size=0.5,
+    random_state=RANDOM_SEED,
+    stratify=df_test.natureza
+)
+
+train_data_loader = create_data_loader(
+    df_train, tokenizer, MAX_LEN, BATCH_SIZE)
+val_data_loader = create_data_loader(df_val, tokenizer, MAX_LEN, BATCH_SIZE)
+test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE)
+
+# %%
+model = NaturezaClassifier(len(lb.classes_))
+model = model.to(device)
+
+# model.load_state_dict(torch.load('best_model_state.bin', map_location=torch.device(device)))
+
+optimizer = AdamW(model.parameters(), lr=2e-5, correct_bias=False)
+total_steps = len(train_data_loader) * EPOCHS
+scheduler = get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps=0,
+    num_training_steps=total_steps
+)
+loss_fn = nn.CrossEntropyLoss().to(device)
+
+# %%
 history = defaultdict(list)
 best_accuracy = 0
 for epoch in range(EPOCHS):
@@ -242,6 +244,7 @@ for epoch in range(EPOCHS):
         best_accuracy = val_acc
     print(f'{(time.time()-starting)/60}')
 
+# %%
 
 plt.plot(history['train_acc'], label='train accuracy')
 plt.plot(history['val_acc'], label='validation accuracy')
@@ -282,6 +285,7 @@ plt.legend()
 plt.ylim([0, 1])
 plt.savefig('Micro.png')
 
+# %%
 test_acc, _, _, _ = eval_model(
     model,
     test_data_loader,
