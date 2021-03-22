@@ -1,10 +1,11 @@
+# %%
 import io
 import os
 import torch
 from tqdm.notebook import tqdm
 from torch.utils.data import Dataset, DataLoader
 # from ml_things import plot_dict, plot_confusion_matrix, fix_text
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, f1_score
 from transformers import (set_seed,
                           TrainingArguments,
                           Trainer,
@@ -28,7 +29,7 @@ torch.manual_seed(seed)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_name_or_path = 'pierreguillou/gpt2-small-portuguese'
 
-
+# %%
 df = pd.read_csv('C:\\Users\\jefma\\GitHub\\pibic-cht\\data\\tceTextData.csv')
 df.columns = ['empenho', 'natureza']
 df = get_topN_labels_doc(df, 'natureza', 400)
@@ -41,6 +42,8 @@ newdf.empenho = newdf.empenho.apply(embeddingPrep)
 le = LabelEncoder()
 df['encodedNatureza'] = le.fit_transform(df.natureza)
 n_labels = len(le.classes_)
+
+# %%
 
 
 class TCEDataset(Dataset):
@@ -143,6 +146,8 @@ def validation(dataloader, device_):
     avg_epoch_loss = total_loss / len(dataloader)
     return true_labels, predictions_labels, avg_epoch_loss
 
+# %%
+
 
 print('Loading configuraiton...')
 model_config = GPT2Config.from_pretrained(
@@ -168,23 +173,23 @@ print('Model loaded to `%s`' % device)
 gpt2_classificaiton_collator = Gpt2ClassificationCollator(
     use_tokenizer=tokenizer, max_sequence_len=max_length)
 
-df_train, df_test = train_test_split(
+df_train, df_val = train_test_split(
     df,
     test_size=0.3,
     random_state=seed
 )
-df_val, df_test = train_test_split(
-    df_test,
-    test_size=0.5,
-    random_state=seed
-)
+# df_val, df_test = train_test_split(
+#     df_val,
+#     test_size=0.5,
+#     random_state=seed
+# )
 
 train_dataloader = create_data_loader(
     df_train, tokenizer, max_length, batch_size)
 valid_dataloader = create_data_loader(
     df_val, tokenizer, max_length, batch_size)
-test_data_loader = create_data_loader(
-    df_test, tokenizer, max_length, batch_size)
+# test_data_loader = create_data_loader(
+#     df_test, tokenizer, max_length, batch_size)
 
 optimizer = AdamW(model.parameters(),
                   lr=2e-5,  # default is 5e-5, our notebook had 2e-5
@@ -197,8 +202,10 @@ scheduler = get_linear_schedule_with_warmup(optimizer,
                                             num_warmup_steps=0,  # Default value in run_glue.py
                                             num_training_steps=total_steps)
 
+# %%
 all_loss = {'train_loss': [], 'val_loss': []}
-all_acc = {'train_acc': [], 'val_acc': []}
+all_micro = {'train_micro': [], 'val_micro': []}
+all_macro = {'train_macro': [], 'val_macro': []}
 
 print('Epoch')
 for epoch in tqdm(range(epochs)):
@@ -206,22 +213,29 @@ for epoch in tqdm(range(epochs)):
     print('Training on batches...')
     train_labels, train_predict, train_loss = train(
         train_dataloader, optimizer, scheduler, device)
-    train_acc = accuracy_score(train_labels, train_predict)
+    train_micro = f1_score(train_labels, train_predict, average='micro')
+    train_macro = f1_score(train_labels, train_predict, average='macro')
+
+    print(f'Train loss {train_loss} micro {train_micro} macro {train_macro}')
+    print()
 
     print('Validation on batches...')
     valid_labels, valid_predict, val_loss = validation(
         valid_dataloader, device)
-    val_acc = accuracy_score(valid_labels, valid_predict)
+    valid_micro = f1_score(valid_labels, valid_predict, average='micro')
+    valid_macro = f1_score(valid_labels, valid_predict, average='macro')
 
-    print("  train_loss: %.5f - val_loss: %.5f - train_acc: %.5f - valid_acc: %.5f" %
-          (train_loss, val_loss, train_acc, val_acc))
+    print(f'Valid loss {val_loss} micro {valid_micro} macro {valid_macro}')
     print()
 
     all_loss['train_loss'].append(train_loss)
     all_loss['val_loss'].append(val_loss)
-    all_acc['train_acc'].append(train_acc)
-    all_acc['val_acc'].append(val_acc)
+    all_micro['train_micro'].append(train_micro)
+    all_micro['val_micro'].append(valid_micro)
+    all_macro['train_macro'].append(train_macro)
+    all_macro['val_macro'].append(valid_macro)
 
+# %%
 true_labels, predictions_labels, avg_epoch_loss = validation(
     valid_dataloader, device)
 
